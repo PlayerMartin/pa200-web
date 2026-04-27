@@ -1,0 +1,52 @@
+name: Deploy App
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build app
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_ASSET_PREFIX: ${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }}
+
+      # Upload static assets
+      - run: |
+          npx azcopy copy ".next/static" \
+          "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/static/_next/static${{ secrets.AZURE_STORAGE_SAS }}" \
+          --recursive
+
+      # Docker build & push
+      - run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+      - run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_ASSET_PREFIX=${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }} \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest .
+      - run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest
+
+      # Deploy using REST API
+      - name: Deploy to Azure
+        run: |
+          curl -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.AZURE_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-myapp/providers/Microsoft.App/containerApps/myapp?api-version=2023-05-01 \
+            -d '{
+              "properties": {
+                "template": {
+                  "containers": [
+                    {
+                      "name": "myapp",
+                      "image": "${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest"
+                    }
+                  ]
+                }
+              }
+            }'
