@@ -9,44 +9,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Build app
-      - run: npm ci
-      - run: npm run build
+      - name: Install deps
+        run: npm ci
+        working-directory: my-app
+
+      - name: Build app
+        run: npm run build
+        working-directory: my-app
         env:
           NEXT_PUBLIC_ASSET_PREFIX: ${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }}
 
-      # Upload static assets
-      - run: |
-          npx azcopy copy ".next/static" \
+      - name: Upload static assets
+        run: |
+          npx azcopy copy "my-app/.next/static" \
           "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/static/_next/static${{ secrets.AZURE_STORAGE_SAS }}" \
           --recursive
 
-      # Docker build & push
-      - run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-      - run: |
+      - name: Docker login
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build image
+        run: |
           docker build \
             --build-arg NEXT_PUBLIC_ASSET_PREFIX=${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }} \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest .
-      - run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest \
+            ./my-app
+      - name: Push image
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest
 
-      # Deploy using REST API
       - name: Deploy to Azure
         run: |
           curl -X PATCH \
             -H "Authorization: Bearer ${{ secrets.AZURE_ACCESS_TOKEN }}" \
             -H "Content-Type: application/json" \
             https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-myapp/providers/Microsoft.App/containerApps/myapp?api-version=2023-05-01 \
-            -d '{
-              "properties": {
-                "template": {
-                  "containers": [
+            -d "{
+              \"properties\": {
+                \"template\": {
+                  \"containers\": [
                     {
-                      "name": "myapp",
-                      "image": "${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest"
+                      \"name\": \"myapp\",
+                      \"image\": \"${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest\"
                     }
                   ]
                 }
               }
-            }'
+            }"
