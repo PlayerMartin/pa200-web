@@ -28,7 +28,7 @@ jobs:
           "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/static/_next/static${{ secrets.AZURE_STORAGE_SAS }}" \
           --recursive
 
-      - name: Docker login
+      - name: Docker login 
         run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Build image
