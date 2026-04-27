@@ -1,29 +1,27 @@
-version: '3.8'
-
 services:
   db:
-    image: postgres:15-alpine
+    image: mcr.microsoft.com/mssql/server:2022-latest
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: string_db
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Password123!"   # must meet complexity requirements
+      MSSQL_DB: string_db
     ports:
-      - "5432:5432"
+      - "1433:1433"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mssql_data:/var/opt/mssql
 
   app:
-    build: 
+    build:
       context: ./my-app
       dockerfile: Dockerfile
     restart: always
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://postgres:password@db:5432/string_db?sslmode=disable
+      - DATABASE_URL=Server=db,1433;Database=string_db;User Id=sa;Password=Password123!;Encrypt=true;TrustServerCertificate=true;
     depends_on:
       - db
 
 volumes:
-  postgres_data:
+  mssql_data:
