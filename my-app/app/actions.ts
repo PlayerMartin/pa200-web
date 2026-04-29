@@ -1,22 +1,39 @@
 "use server";
 import sql, { ConnectionPool } from "mssql";
+import { DefaultAzureCredential } from "@azure/identity";
 
 let pool: ConnectionPool | null = null;
 
-function getPool(): ConnectionPool {
-  if (!pool) {
-    if (!process.env.DATABASE_URL) {
-      console.error("DATABASE_URL is missing!");
-    }
-    pool = new sql.ConnectionPool(process.env.DATABASE_URL!);
-  }
-  return pool;
-}
-
 async function getConnectedPool(): Promise<ConnectionPool> {
-  const p = getPool();
-  if (!p.connected && !p.connecting) await p.connect();
-  return p;
+  if (pool?.connected) return pool;
+  if (pool) { 
+    try { 
+      await pool.close(); 
+    } catch {
+    } 
+    pool = null; 
+  }
+
+  const credential = new DefaultAzureCredential();
+  const { token } = await credential.getToken(
+    "https://database.windows.net/.default"
+  );
+
+  pool = new sql.ConnectionPool({
+    server: "myapp-sqlserver.database.windows.net",
+    database: "myappdb",
+    options: {
+      encrypt: true,
+      trustServerCertificate: false,
+    },
+    authentication: {
+      type: "azure-active-directory-access-token",
+      options: { token },
+    },
+  });
+
+  await pool.connect();
+  return pool;
 }
 
 const CREATE_TABLE_SQL = `

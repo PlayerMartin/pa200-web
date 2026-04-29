@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -22,39 +26,38 @@ jobs:
         env:
           NEXT_PUBLIC_ASSET_PREFIX: ${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }}
 
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Upload static assets
         run: |
-          npx azcopy copy "my-app/.next/static" \
-          "https://${{ secrets.AZURE_STORAGE_ACCOUNT }}.blob.core.windows.net/static/_next/static${{ secrets.AZURE_STORAGE_SAS }}" \
-          --recursive
+          az storage blob upload-batch \
+            --account-name ${{ secrets.AZURE_STORAGE_ACCOUNT }} \
+            --destination 'static/_next/static' \
+            --source my-app/.next/static \
+            --overwrite \
+            --auth-mode login
 
-      - name: Docker login 
+      - name: Docker login
         run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Build image
-        run: | 
+        run: |
           docker build \
             --build-arg NEXT_PUBLIC_ASSET_PREFIX=${{ secrets.NEXT_PUBLIC_ASSET_PREFIX }} \
-            -t ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest \
+            -t ${{ secrets.DOCKERHUB_USERNAME }}/myapp:${{ github.sha }} \
             ./my-app
-      - name: Push image
-        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest
 
-      - name: Deploy to Azure
+      - name: Push image
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/myapp:${{ github.sha }}
+
+      - name: Deploy to Container App
         run: |
-          curl -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.AZURE_ACCESS_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            https://management.azure.com/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/rg-myapp/providers/Microsoft.App/containerApps/myapp?api-version=2023-05-01 \
-            -d "{
-              \"properties\": {
-                \"template\": {
-                  \"containers\": [
-                    {
-                      \"name\": \"myapp\",
-                      \"image\": \"${{ secrets.DOCKERHUB_USERNAME }}/myapp:latest\"
-                    }
-                  ]
-                }
-              }
-            }"
+          az containerapp update \
+            --name myapp \
+            --resource-group rg-myapp \
+            --image ${{ secrets.DOCKERHUB_USERNAME }}/myapp:${{ github.sha }}

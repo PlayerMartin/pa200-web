@@ -4,7 +4,7 @@ services:
     restart: always
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Password123!"   # must meet complexity requirements
+      MSSQL_SA_PASSWORD: "Password123!" # must meet complexity requirements
       MSSQL_DB: string_db
     ports:
       - "1433:1433"
@@ -18,8 +18,8 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    environment:
-      - DATABASE_URL=Server=db,1433;Database=string_db;User Id=sa;Password=Password123!;Encrypt=true;TrustServerCertificate=true;
+    # environment:
+    # - DATABASE_URL=Server=db,1433;Database=string_db;User Id=sa;Password=Password123!;Encrypt=true;TrustServerCertificate=true;
     depends_on:
       - db
 
